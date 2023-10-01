@@ -6,9 +6,10 @@ download_cloud_cube_csv <- function(.dir, .from, .to, .return_data = FALSE) {
   require(sits)
   require(magrittr)
   require(dplyr)
+  require(lubridate)
 
 
-  if(!is.Date(.from) | !is.Date(.to)) {
+  if(!lubridate::is.Date(.from) | !lubridate::is.Date(.to)) {
 
     .from <- as.Date(.from)
 
@@ -16,12 +17,13 @@ download_cloud_cube_csv <- function(.dir, .from, .to, .return_data = FALSE) {
 
   }
 
-  if(is.na(.from) | is.na(to) | is.null(.from) | is.null(.to)) {
+  if(is.na(.from) | is.na(.to) | is.null(.from) | is.null(.to)) {
 
     stop("Cannot decipher to- and from dates. Please provide dates or character strings in yyyy-mm-dd format.")
 
   }
 
+  message("Downloading data from ", .from, " to ", .to)
 
   cloud_cube <- sits::sits_cube(
     source = "MPC",
