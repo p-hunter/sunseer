@@ -33,8 +33,8 @@ download_cloud_cube_csv <- function(.dir, .from, .to, .return_data = FALSE) {
       "lon_max" = 2.5488281
     ),
     bands = c("CLOUD"),
-    start_date = as.Date("2019-06-25"),
-    end_date = as.Date("2019-06-30"),
+    start_date = as.Date(.from),
+    end_date = as.Date(.to),
     progress = FALSE
   )
 
@@ -50,7 +50,7 @@ download_cloud_cube_csv <- function(.dir, .from, .to, .return_data = FALSE) {
 
   save_as <- paste0(.dir, "/cloud_cube_df_From_", .from, "_To_", .to, ".csv")
 
-  write.csv(paste0(.dir, "/cloud_cube_df_From_", .from, "_To_", .to, ".csv"))
+  write.csv(cloud_cube_df, save_as)
 
   message("Data sucessfully saved as CSV: ", save_as)
 
