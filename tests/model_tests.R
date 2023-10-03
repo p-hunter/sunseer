@@ -79,8 +79,7 @@ pv <- pv_df %>%
     generation_mw = round(generation_mw),
     Period = hh_period(datetime_gmt),
     doy = lubridate::yday(date_gmt),
-    lag_1_generation_mw = dplyr::lag(generation_mw, 1),
-    lag_48_generation_mw = dplyr::lag(generation_mw, 48)
+    lag_1_generation_mw = dplyr::lag(generation_mw, 1)
     ) %>%
   dplyr::distinct() %>%
   dplyr::filter(date_gmt >= as.Date("2019-01-01"))  %>%
@@ -145,7 +144,7 @@ pv %>%
 
 
 
-
+saveRDS(pv_fitted, "models/pv_hurdle_model")
 
 
 
