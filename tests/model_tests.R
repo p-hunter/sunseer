@@ -79,10 +79,11 @@ pv <- pv_df %>%
     generation_mw = round(generation_mw),
     Period = hh_period(datetime_gmt),
     doy = lubridate::yday(date_gmt),
-    lag_generation_mw = dplyr::lag(generation_mw, 48)
+    lag_1_generation_mw = dplyr::lag(generation_mw, 1),
+    lag_48_generation_mw = dplyr::lag(generation_mw, 48)
     ) %>%
   dplyr::distinct() %>%
-  dplyr::filter(date_gmt >= as.Date("2018-01-01"))  %>%
+  dplyr::filter(date_gmt >= as.Date("2019-01-01"))  %>%
   na.omit()
 
 
@@ -105,7 +106,7 @@ pv_preprocessor <- pv_train %>%
   recipes::step_bs(Period, deg_free = tune(id = "Period_Spline")) %>%
   recipes::step_bs(doy, deg_free = tune(id = "DOY_Spline"))
 
-pv_model <- parsnip::poisson_reg(mode = "regression", engine = "zeroinfl")
+pv_model <- parsnip::poisson_reg(mode = "regression", engine = "hurdle")
 
 pv_wf <- workflow(pv_preprocessor, spec =  pv_model)
 
@@ -123,6 +124,31 @@ pv_best <- tune::select_best(pv_tuned)
 pv_final <- tune::finalize_workflow(pv_wf, pv_best)
 
 pv_fitted <- fit(pv_final, pv_train)
+
+pv_preds <- predict(pv_fitted, pv)
+
+pv <- dplyr::bind_cols(pv, pv_preds)
+
+
+pv$.pred <- round(pv$.pred)
+
+
+
+
+pv %>%
+  tidyr::pivot_longer(cols = c(".pred", "generation_mw")) %>%
+  dplyr::filter(date_gmt >= as.Date("2023-09-18")) %>%
+  ggplot(aes(x=datetime_gmt, y=value, colour=name)) +
+  geom_line(linewidth=1, alpha=.5) +
+  theme_bw() +
+  labs(title = "Predictions vs Actual", y="Megawatts", x="Date-Time")
+
+
+
+
+
+
+
 
 
 
