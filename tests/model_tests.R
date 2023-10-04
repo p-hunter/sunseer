@@ -147,7 +147,32 @@ pv %>%
 saveRDS(pv_fitted, "models/pv_hurdle_model")
 
 
+future_pv <- data.frame(
+  gsp_id=0L,
+  datetime_gmt = seq.POSIXt(pv$datetime_gmt[nrow(pv)], by = "30 min", length.out = 49),
+  lag_mean_cloud_cover = pv$lag_mean_cloud_cover[nrow(pv)]
+
+) %>%
+  dplyr::mutate(date_gmt = as.Date(datetime_gmt), .before=lag_mean_cloud_cover) %>%
+  dplyr::mutate(Period=hh_period(datetime_gmt),
+                doy=lubridate::yday(date_gmt),
+                lag_1_generation_mw=pv$generation_mw[nrow(pv)])
+
+future_pv$generation_mw <- 0
+
+for(i in 1:(-1+nrow(future_pv))) {
+
+  print(future_pv[i,])
+
+future_pv$generation_mw[i] <- unlist(predict(pv_fitted, future_pv[i,] ))
+future_pv$lag_1_generation_mw[i+1] <- future_pv$generation_mw[i]
 
 
+}
 
 
+ggplot(subset(pv, date_gmt == Sys.Date()-3), aes(x=Period, y= generation_mw)) +
+  geom_line()
+
+ggplot(future_pv, aes(x=Period, y=generation_mw)) +
+  geom_line()
