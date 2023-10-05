@@ -5,7 +5,7 @@ library(tidymodels)
 library(tidyverse)
 library(magrittr)
 
-source("R/misc.R")
+source("R/pv.R")
 
 
 pv_df <- readr::read_csv("pv/pv_live.csv", col_select = c("gsp_id", "datetime_gmt", "generation_mw")) %>%
@@ -43,7 +43,7 @@ cloud_cube_data_agg <- cloud_cube_data %>%
 
 
 
-
+cloud_cube_data_wide <- dplyr::select()
 
 
 cloud_cube_data_agg %>%
@@ -79,7 +79,9 @@ pv <- pv_df %>%
     generation_mw = round(generation_mw),
     Period = hh_period(datetime_gmt),
     doy = lubridate::yday(date_gmt),
-    lag_1_generation_mw = dplyr::lag(generation_mw, 1)
+    lag_1_generation_mw = dplyr::lag(generation_mw, 1),
+    lag_1_generation_mw = dplyr::lag(generation_mw, 2)
+
     ) %>%
   dplyr::distinct() %>%
   dplyr::filter(date_gmt >= as.Date("2019-01-01"))  %>%
@@ -122,11 +124,11 @@ pv_best <- tune::select_best(pv_tuned)
 
 pv_final <- tune::finalize_workflow(pv_wf, pv_best)
 
-pv_fitted <- fit(pv_final, pv_train)
+pv_fitted2 <- fit(pv_final, pv_train)
 
-pv_preds <- predict(pv_fitted, pv)
+pv_preds <- predict(pv_fitted2, pv)
 
-pv <- dplyr::bind_cols(pv, pv_preds)
+pv <- dplyr::bind_cols(pv, pv_preds2)
 
 
 pv$.pred <- round(pv$.pred)
@@ -147,6 +149,9 @@ pv %>%
 saveRDS(pv_fitted, "models/pv_hurdle_model")
 
 
+
+pv_fitted <- readRDS("models/pv_hurdle_model")
+
 future_pv <- data.frame(
   gsp_id=0L,
   datetime_gmt = seq.POSIXt(pv$datetime_gmt[nrow(pv)], by = "30 min", length.out = 49),
@@ -160,12 +165,15 @@ future_pv <- data.frame(
 
 future_pv$generation_mw <- 0
 
-for(i in 1:(-1+nrow(future_pv))) {
+future_pv_nrow <- nrow(future_pv)
 
-  print(future_pv[i,])
+for(i in 1:(future_pv_nrow)) {
+
 
 future_pv$generation_mw[i] <- unlist(predict(pv_fitted, future_pv[i,] ))
+if(i != future_pv_nrow) {
 future_pv$lag_1_generation_mw[i+1] <- future_pv$generation_mw[i]
+}
 
 
 }
@@ -174,5 +182,15 @@ future_pv$lag_1_generation_mw[i+1] <- future_pv$generation_mw[i]
 ggplot(subset(pv, date_gmt == Sys.Date()-3), aes(x=Period, y= generation_mw)) +
   geom_line()
 
-ggplot(future_pv, aes(x=Period, y=generation_mw)) +
+ggplot(future_pv, aes(x=datetime_gmt, y=generation_mw)) +
   geom_line()
+
+
+
+
+
+
+pacf(pv$generation_mw, plot = F)
+
+acf(pv$generation_mw, plot = F)
+
