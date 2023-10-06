@@ -43,7 +43,11 @@ cloud_cube_data_agg <- cloud_cube_data %>%
 
 
 
-cloud_cube_data_wide <- dplyr::select()
+cloud_cube_data_wide <- dplyr::select(cloud_cube_data, Date, Key, cloud_cover) %>%
+  dplyr::distinct() %>%
+  tidyr::pivot_wider(id_cols = "Date", names_from = "Key", values_from = "cloud_cover", values_fn = median) %>%
+  tidyr::fill(dplyr::contains("_"), .direction = "downup")
+
 
 
 cloud_cube_data_agg %>%
@@ -72,7 +76,8 @@ cloud_cube_data_agg %>%
 
 
 pv <- pv_df %>%
-  dplyr::left_join(cloud_cube_data_agg) %>%
+  dplyr::left_join(cloud_cube_data_wide %>%
+                     dplyr::rename(date_gmt=Date)) %>%
   na.omit()%>%
   dplyr::arrange(datetime_gmt) %>%
   dplyr::mutate(
@@ -80,7 +85,7 @@ pv <- pv_df %>%
     Period = hh_period(datetime_gmt),
     doy = lubridate::yday(date_gmt),
     lag_1_generation_mw = dplyr::lag(generation_mw, 1),
-    lag_1_generation_mw = dplyr::lag(generation_mw, 2)
+    lag_2_generation_mw = dplyr::lag(generation_mw, 2)
 
     ) %>%
   dplyr::distinct() %>%
@@ -100,12 +105,14 @@ pv_folds <- rsample::vfold_cv(pv_train)
 library(poissonreg)
 library(pscl)
 library(finetune)
+library(embed)
 
 pv_preprocessor <- pv_train %>%
   recipes::recipe(generation_mw ~ .) %>%
   recipes::update_role(gsp_id, datetime_gmt, date_gmt, new_role = "passive") %>%
   recipes::step_bs(Period, deg_free = tune(id = "Period_Spline")) %>%
-  recipes::step_bs(doy, deg_free = tune(id = "DOY_Spline"))
+  recipes::step_bs(doy, deg_free = tune(id = "DOY_Spline")) %>%
+  recipes::step_pca(dplyr::starts_with("R"), num_comp = tune())
 
 pv_model <- parsnip::poisson_reg(mode = "regression", engine = "hurdle")
 
@@ -114,7 +121,7 @@ pv_wf <- workflow(pv_preprocessor, spec =  pv_model)
 pv_tuned <- finetune::tune_race_anova(
   pv_wf,
   resamples = pv_folds,
-  grid = 20,
+  grid = 30,
   control=finetune::control_race(T, T, F)
 )
 
@@ -126,14 +133,14 @@ pv_final <- tune::finalize_workflow(pv_wf, pv_best)
 
 pv_fitted2 <- fit(pv_final, pv_train)
 
-pv_preds <- predict(pv_fitted2, pv)
+pv_preds2 <- predict(pv_fitted2, pv)
 
 pv <- dplyr::bind_cols(pv, pv_preds2)
 
 
-pv$.pred <- round(pv$.pred)
-
-
+pv$.pred <- round(pv$.pred...390)
+(mean((pv$generation_mw - pv$.pred)))
+sqrt(mean((pv$generation_mw - pv$.pred)^2))
 
 
 pv %>%
@@ -169,12 +176,13 @@ future_pv_nrow <- nrow(future_pv)
 
 for(i in 1:(future_pv_nrow)) {
 
-
 future_pv$generation_mw[i] <- unlist(predict(pv_fitted, future_pv[i,] ))
-if(i != future_pv_nrow) {
-future_pv$lag_1_generation_mw[i+1] <- future_pv$generation_mw[i]
-}
 
+if(i != future_pv_nrow) {
+
+  future_pv$lag_1_generation_mw[i+1] <- future_pv$generation_mw[i]
+
+  }
 
 }
 

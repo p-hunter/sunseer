@@ -71,12 +71,3 @@ download_cloud_cube_csv <- function(.dir, .from, .to, .return_data = FALSE) {
   invisible(NULL)
 
 }
-
- #
-
-
-# s2_cube_df %>%
-#   dplyr::select( DateTime, Key, CloudCover = cloud_cover) %>%
-#   tidyr::pivot_wider(id_cols = c("DateTime"), names_from = "Key", values_from = "CloudCover") %>%
-#   dplyr::arrange(DateTime) %>%
-#   View()
