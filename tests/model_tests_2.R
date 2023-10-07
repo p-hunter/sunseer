@@ -37,7 +37,8 @@ pv <- pv_df %>%
     generation_mw = round(generation_mw),
     Period = hh_period(datetime_gmt),
     doy = lubridate::yday(date_gmt),
-    lag_1_generation_mw = dplyr::lag(generation_mw, 1)
+    lag_1_generation_mw = dplyr::lag(generation_mw, 1),
+    lag_2_generation_mw = dplyr::lag(generation_mw, 2)
   ) %>%
   dplyr::distinct() %>%
   dplyr::filter(date_gmt >= as.Date("2019-01-01"))  %>%
@@ -54,7 +55,8 @@ future_pv <- data.frame(
   dplyr::mutate(date_gmt = as.Date(datetime_gmt), .before=lag_mean_cloud_cover) %>%
   dplyr::mutate(Period=hh_period(datetime_gmt),
                 doy=lubridate::yday(date_gmt),
-                lag_1_generation_mw=pv$generation_mw[nrow(pv)])
+                lag_1_generation_mw=pv$generation_mw[nrow(pv)],
+                lag_2_generation_mw=pv$generation_mw[nrow(pv)-1])
 
 future_pv$generation_mw <- 0
 
@@ -62,17 +64,21 @@ future_pv_nrow <- nrow(future_pv)
 
 for(i in 1:(future_pv_nrow)) {
 
-
   future_pv$generation_mw[i] <- unlist(predict(pv_fitted, future_pv[i,] ))
-  if(i != future_pv_nrow) {
-    future_pv$lag_1_generation_mw[i+1] <- future_pv$generation_mw[i]
-  }
+  future_pv$generation_mw[i] <- pmax(0, future_pv$generation_mw[i])
 
+
+  if(i <= future_pv_nrow - 2) {
+
+    future_pv$lag_1_generation_mw[i+1] <- future_pv$generation_mw[i]
+    future_pv$lag_2_generation_mw[i+2] <- future_pv$generation_mw[i]
+
+  }
 
 }
 
 
-ggplot(subset(pv, date_gmt == Sys.Date()-3), aes(x=Period, y= generation_mw)) +
+ggplot(subset(pv, date_gmt == Sys.Date()-6), aes(x=Period, y= generation_mw)) +
   geom_line()
 
 ggplot(future_pv, aes(x=datetime_gmt, y=generation_mw)) +
@@ -85,7 +91,7 @@ library(DALEXtra)
 
 
 me <- DALEXtra::explain_tidymodels(pv_fitted, pv)
-DALEX::variable_effect_partial_dependency(me, variables = "lag_1_generation_mw") %>%
+DALEX::variable_effect_partial_dependency(me, variables = "lag_mean_cloud_cover") %>%
   tibble::as.tibble() %>%
   ggplot(aes(`_x_`, `_yhat_`)) +
   geom_point()
