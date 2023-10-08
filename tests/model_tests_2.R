@@ -38,13 +38,14 @@ pv <- pv_df %>%
     Period = hh_period(datetime_gmt),
     doy = lubridate::yday(date_gmt),
     lag_1_generation_mw = dplyr::lag(generation_mw, 1),
-    lag_2_generation_mw = dplyr::lag(generation_mw, 2)
+    lag_2_generation_mw = dplyr::lag(generation_mw, 2),
+    znz = ifelse(generation_mw==0, "Zero", "NonZero")
   ) %>%
   dplyr::distinct() %>%
   dplyr::filter(date_gmt >= as.Date("2019-01-01"))  %>%
   na.omit()
 
-pv_fitted <- readRDS("models/pv_hurdle_model")
+pv_fitted <- readRDS("models/pv_zip_model")
 
 future_pv <- data.frame(
   gsp_id=0L,
@@ -56,7 +57,8 @@ future_pv <- data.frame(
   dplyr::mutate(Period=hh_period(datetime_gmt),
                 doy=lubridate::yday(date_gmt),
                 lag_1_generation_mw=pv$generation_mw[nrow(pv)],
-                lag_2_generation_mw=pv$generation_mw[nrow(pv)-1])
+                lag_2_generation_mw=pv$generation_mw[nrow(pv)-1],
+                znz = "Unknown")
 
 future_pv$generation_mw <- 0
 

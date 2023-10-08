@@ -103,7 +103,8 @@ pv <- pv_df %>%
     Period = hh_period(datetime_gmt),
     doy = lubridate::yday(date_gmt),
     lag_1_generation_mw = dplyr::lag(generation_mw, 1),
-    lag_2_generation_mw = dplyr::lag(generation_mw, 2)
+    lag_2_generation_mw = dplyr::lag(generation_mw, 2),
+    znz = ifelse(generation_mw>0, "NonZero", "Zero")
 
     ) %>%
   dplyr::distinct() %>%
@@ -111,6 +112,7 @@ pv <- pv_df %>%
   na.omit()
 
 p <- pacf(pv$generation_mw, plot=F)
+
 pacf(pv$generation_mw[pv$generation_mw>0], plot=F)
 
 
@@ -168,6 +170,11 @@ pv %>%
   theme(title = element_text(size=20))
 
 
+mean(pv$generation_mw/1000)
+var(pv$generation_mw/1000)
+
+
+
 pv %>%
   dplyr::group_by(doy) %>%
   dplyr::summarise(Average_Generation_MW=mean(generation_mw, na.rm=T)) %>%
@@ -211,35 +218,69 @@ cloud_cube_data_agg %>%
   geom_point() +
   theme_bw()
 
-pv_split <- rsample::initial_time_split(pv)
 
-
-pv_train <- rsample::training(pv_split)
-
-
-pv_folds <- rsample::vfold_cv(pv_train)
 
 library(poissonreg)
 library(pscl)
 library(finetune)
 library(embed)
+library(doParallel)
+
+pv_split <- rsample::initial_time_split(pv)
+
+pv_train <- rsample::training(pv_split)
+
+pv_folds <- rsample::vfold_cv(pv_train)
+
+
+pv_preprocessor <- pv_train %>%
+  recipes::recipe(generation_mw ~ .) %>%
+  recipes::update_role(gsp_id, datetime_gmt, date_gmt, znz, new_role = "passive") %>%
+  recipes::step_bs(Period, deg_free = tune(id = "Period_Spline")) %>%
+  recipes::step_bs(doy, deg_free = tune(id = "DOY_Spline")) #%>%
+#recipes::step_pca(dplyr::starts_with("R"), num_comp = tune())
+
+pv_model <- parsnip::poisson_reg(mode = "regression", engine = "zeroinfl")
+
+pv_wf <- workflows::workflow(pv_preprocessor, spec =  pv_model)
+
+all_cores <- parallel::detectCores(logical = FALSE)
+
+cl <- parallel::makePSOCKcluster(all_cores)
+
+doParallel::registerDoParallel(cl)
+
+pv_tuned <- finetune::tune_race_anova(pv_wf,  resamples = pv_folds,  grid = 28,
+  control = finetune::control_race(T, T, T, parallel_over = "everything")
+)
+
+pv_best <- tune::select_best(pv_tuned)
+
+pv_final <- tune::finalize_workflow(pv_wf, pv_best)
+
+pv_fitted <- fit(pv_final, pv_train)
+
+doParallel::stopImplicitCluster()
+closeAllConnections()
+
+
 
 
 
 pv_preprocessor <- pv_train %>%
   recipes::recipe(generation_mw ~ .) %>%
-  recipes::update_role(gsp_id, datetime_gmt, date_gmt, new_role = "passive") %>%
+  recipes::update_role(gsp_id, datetime_gmt, date_gmt, znz, new_role = "passive") %>%
   recipes::step_bs(Period, deg_free = tune(id = "Period_Spline")) %>%
   recipes::step_bs(doy, deg_free = tune(id = "DOY_Spline")) #%>%
   #recipes::step_pca(dplyr::starts_with("R"), num_comp = tune())
 
-pv_model <- parsnip::poisson_reg(mode = "regression") %>%
-  set_engine(engine = "zeroinfl", dist="geometric")
+# pv_model <- parsnip::poisson_reg(mode = "regression") %>%
+#   set_engine(engine = "zeroinfl", dist="geometric")
 
-pv_model <- parsnip::linear_reg(mode = "regression") %>%
+pv_model2 <- parsnip::linear_reg(mode = "regression") %>%
   set_engine(engine = "glm")
 
-pv_wf <- workflow(pv_preprocessor, spec =  pv_model)
+pv_wf2 <- workflow(pv_preprocessor, spec =  pv_model2)
 
 
 all_cores <- parallel::detectCores(logical = FALSE)
@@ -248,8 +289,8 @@ library(doParallel)
 cl <- makePSOCKcluster(all_cores)
 registerDoParallel(cl)
 
-pv_tuned <- finetune::tune_race_anova(
-  pv_wf,
+pv_tuned2 <- finetune::tune_race_anova(
+  pv_wf2,
   resamples = pv_folds,
   grid = 28,
   control=finetune::control_race(T, T, T, parallel_over = "everything")
@@ -257,41 +298,104 @@ pv_tuned <- finetune::tune_race_anova(
 
 
 
-pv_best <- tune::select_best(pv_tuned)
+pv_best2 <- tune::select_best(pv_tuned2)
 
-pv_final <- tune::finalize_workflow(pv_wf, pv_best)
+pv_final2 <- tune::finalize_workflow(pv_wf2, pv_best2)
 
-pv_fitted2 <- fit(pv_final, pv_train)
+pv_fitted2 <- fit(pv_final2, pv_train)
 
 stopImplicitCluster()
 closeAllConnections()
 
-pv_preds2 <- predict(pv_fitted2, pv)
 
-pv <- dplyr::bind_cols(pv, pv_preds2)
+
+
+
+
+
+pv_preprocessor3 <- pv_train %>%
+  recipes::recipe(znz ~ .) %>%
+  recipes::update_role(gsp_id, datetime_gmt, date_gmt,generation_mw, dplyr::contains(c("cloud")), new_role = "passive") %>%
+  recipes::step_bs(Period, deg_free = tune(id = "Period_Spline")) %>%
+  recipes::step_bs(doy, deg_free = tune(id = "DOY_Spline")) #%>%
+#recipes::step_pca(dplyr::starts_with("R"), num_comp = tune())
+
+pv_model3 <- parsnip::logistic_reg(mode = "classification") %>%
+  set_engine(engine = "glm")
+
+pv_wf3 <- workflow(pv_preprocessor3, spec =  pv_model3)
+
+
+all_cores <- parallel::detectCores(logical = FALSE)
+
+library(doParallel)
+cl <- makePSOCKcluster(all_cores)
+registerDoParallel(cl)
+
+pv_tuned3 <- finetune::tune_race_anova(
+  pv_wf3,
+  resamples = pv_folds,
+  grid = 28,
+  control=finetune::control_race(T, T, T, parallel_over = "everything")
+)
+
+
+
+pv_best3 <- tune::select_best(pv_tuned3)
+
+pv_final3 <- tune::finalize_workflow(pv_wf3, pv_best3)
+
+pv_fitted3 <- fit(pv_final3, pv_train)
+
+stopImplicitCluster()
+closeAllConnections()
+
+
+
+
+
+
+
+
+pv_preds <- predict(pv_fitted, pv)
+
+pv <- dplyr::bind_cols(pv, pv_preds)
 
 
 pv$.pred <-  round(pv$.pred)
 (mean((pv$generation_mw - pv$.pred)))
 sqrt(mean((pv$generation_mw - pv$.pred)^2))
 
+max(pv$generation_mw)
+pv %>%
+  dplyr::mutate(Predicted = pmax(0,.pred)) %>%
+  tidyr::pivot_longer(cols = c("Predicted", "generation_mw")) %>%
+  dplyr::filter(date_gmt >= as.Date("2023-09-18"), date_gmt <= as.Date("2023-09-22")) %>%
+  ggplot(aes(x=datetime_gmt, y=value, colour=name)) +
+  geom_line(linewidth=0.5, alpha=1) +
+  theme_bw() +
+  labs(title = "Predictions vs Actual - Part of Test Set Data", subtitle = "Zero-Inflated Poisson", y="Megawatts", x="Date-Time") +
+  theme(plot.title = element_text(size=20))
 
 pv %>%
-  dplyr::mutate(Predicted = .pred) %>%
-  tidyr::pivot_longer(cols = c(".pred", "generation_mw")) %>%
   dplyr::filter(date_gmt >= as.Date("2023-09-18")) %>%
-  ggplot(aes(x=datetime_gmt, y=value, colour=name)) +
-  geom_line(linewidth=1, alpha=.5) +
+  dplyr::mutate(Predicted = pmax(0,.pred)) %>%
+  ggplot(aes(x=datetime_gmt)) +
+  geom_col(aes(y=generation_mw), fill="gold") +
+  geom_line(aes(y=Predicted), colour="green") +
+  #geom_point(linewidth=1, al, pha=.5) +
   theme_bw() +
   labs(title = "Predictions vs Actual", y="Megawatts", x="Date-Time")
 
 
 
+saveRDS(pv_fitted, "models/pv_zip_model")
 saveRDS(pv_fitted2, "models/pv_glm_model")
+saveRDS(pv_fitted3, "models/pv_logit_model")
 
 
 
-pv_fitted <- readRDS("models/pv_glm_model")
+pv_fitted <- readRDS("models/pv_zip_model")
 
 future_pv <- data.frame(
   gsp_id=0L,
@@ -303,7 +407,8 @@ future_pv <- data.frame(
   dplyr::mutate(Period=hh_period(datetime_gmt),
                 doy=lubridate::yday(date_gmt),
                 lag_1_generation_mw=pv$generation_mw[nrow(pv)],
-                lag_2_generation_mw=pv$generation_mw[nrow(pv)-1]
+                lag_2_generation_mw=pv$generation_mw[nrow(pv)-1],
+                znz = "Not Known"
 
                 )
 
