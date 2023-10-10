@@ -45,12 +45,12 @@ pv <- pv_df %>%
   dplyr::filter(date_gmt >= as.Date("2019-01-01"))  %>%
   na.omit()
 
-pv_fitted <- readRDS("models/pv_zip_model")
+pv_fitted <- readRDS("models/pv_glm_model")
 
 future_pv <- data.frame(
   gsp_id=0L,
   datetime_gmt = seq.POSIXt(pv$datetime_gmt[nrow(pv)], by = "30 min", length.out = 49),
-  lag_mean_cloud_cover = pv$lag_mean_cloud_cover[nrow(pv)]
+  lag_mean_cloud_cover = 100L# pv$lag_mean_cloud_cover[nrow(pv)]
 
 ) %>%
   dplyr::mutate(date_gmt = as.Date(datetime_gmt), .before=lag_mean_cloud_cover) %>%
@@ -63,6 +63,8 @@ future_pv <- data.frame(
 future_pv$generation_mw <- 0
 
 future_pv_nrow <- nrow(future_pv)
+
+stime <- Sys.time()
 
 for(i in 1:(future_pv_nrow)) {
 
@@ -80,29 +82,47 @@ for(i in 1:(future_pv_nrow)) {
 }
 
 
+etime <- Sys.time()
+
+etime-stime
+
+
+
+
+
 ggplot(subset(pv, date_gmt == Sys.Date()-6), aes(x=Period, y= generation_mw)) +
   geom_line()
 
 ggplot(future_pv, aes(x=datetime_gmt, y=generation_mw)) +
   geom_line()
 
-
-
 library(DALEX)
 library(DALEXtra)
-
 
 me <- DALEXtra::explain_tidymodels(pv_fitted, pv)
 DALEX::variable_effect_partial_dependency(me, variables = "lag_mean_cloud_cover") %>%
   tibble::as.tibble() %>%
   ggplot(aes(`_x_`, `_yhat_`)) +
-  geom_point()
+  geom_point() +
+  geom_line() +
+  labs(title = "Partial Dependence - Mean Lagged Cloud Cover %") +
+  theme_bw() +
+  theme(plot.title = element_text(size = 20))
 
+DALEX::variable_effect_partial_dependency(me, variables = "Period") %>%
+  tibble::as.tibble() %>%
+  ggplot(aes(`_x_`, `_yhat_`)) +
+  geom_point() +
+  geom_line() +
+  labs(title = "Partial Dependence - Mean Lagged Cloud Cover %") +
+  theme_bw() +
+  theme(plot.title = element_text(size = 20))
 
-
-
-
-
-
-
-
+DALEX::variable_effect_partial_dependency(me, variables = "doy") %>%
+  tibble::as.tibble() %>%
+  ggplot(aes(`_x_`, `_yhat_`)) +
+  geom_point() +
+  geom_line() +
+  labs(title = "Partial Dependence - Mean Lagged Cloud Cover %") +
+  theme_bw() +
+  theme(plot.title = element_text(size = 20))
