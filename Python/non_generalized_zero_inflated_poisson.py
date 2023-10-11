@@ -64,6 +64,7 @@ def non_generalized_zero_inflated_poisson(X, y):
     Basically says, "no, you may not customise this model, not even with offsets!!!"
 
     """
+    X = sm.add_constant(X)
     _y = y
     _X = X
     _Z = _X
@@ -78,7 +79,8 @@ def non_generalized_zero_inflated_poisson(X, y):
     zero_model = LogisticRegression(penalty = "none").fit(_Z, _y0.astype(int))
     #pars = LinearRegression().fit(_X[_y1], y[_y1]).coef_
     warnings.filterwarnings("ignore")
-    count_model = reg_models.Poisson(endog=y,exog=_X.reshape(-1, 1) ).fit(disp=0)
+    
+    count_model = reg_models.Poisson(endog=y,exog=_X ).fit(disp=0)
     count_model_params = np.append(count_model.params, 0.1)
     warnings.filterwarnings("always")
     starts = dict({"Count":count_model, "Zero":zero_model})
@@ -89,29 +91,15 @@ def non_generalized_zero_inflated_poisson(X, y):
 
 class NonGeneralizedZeroInflatedPoisson(BaseEstimator, RegressorMixin):
     def fit(self, X, y):
-        model = reg_models.ZeroInflatedGeneralizedPoisson(endog=y,exog= X)
+        X = sm.add_constant(X)
+        model = reg_models.ZeroInflatedGeneralizedPoisson(endog=y,exog= X, exog_infl=X)
         self.fit = model.fit()
+        self.params = self.fit.params
         self.model = model
         return self
     def predict(self, X):
+        X = sm.add_constant(X)
         return self.fit.predict(X)
 
 
-class SMWrapper(BaseEstimator, RegressorMixin):
-    """ A universal sklearn-style wrapper for statsmodels regressors
-     Doesn't work for zero-inflated, yet """
-    def __init__(self, model_class, fit_intercept=True):
-        self.model_class = model_class
-        self.fit_intercept = fit_intercept
-    def fit(self, X, y):
-        if self.fit_intercept:
-            X = sm.add_constant(X)
-        self.model_ = self.model_class(y, X)
-        self.results_ = self.model_.fit()
-        return self
-    def predict(self, X):
-        if self.fit_intercept:
-            X = sm.add_constant(X)
-        return self.results_.predict(X)
 
-#check_estimator(SMWrapper(sm.ZeroInflatedGeneralizedPoisson))
