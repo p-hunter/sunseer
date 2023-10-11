@@ -79,7 +79,7 @@ def non_generalized_zero_inflated_poisson(X, y):
     #pars = LinearRegression().fit(_X[_y1], y[_y1]).coef_
     warnings.filterwarnings("ignore")
     count_model = reg_models.Poisson(endog=y,exog=_X.reshape(-1, 1) ).fit(disp=0)
-    count_model_params = np.append(reg_models.Poisson(endog=y,exog=_X.reshape(-1, 1) ).fit(disp=0).params, 0.1)
+    count_model_params = np.append(count_model.params, 0.1)
     warnings.filterwarnings("always")
     starts = dict({"Count":count_model, "Zero":zero_model})
     starts_coefs = dict({"Count":count_model_params, "Zero":zero_model.coef_})
