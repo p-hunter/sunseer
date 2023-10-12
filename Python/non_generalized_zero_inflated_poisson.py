@@ -92,14 +92,15 @@ def non_generalized_zero_inflated_poisson(X, y):
 class NonGeneralizedZeroInflatedPoisson(BaseEstimator, RegressorMixin):
     def fit(self, X, y):
         X = sm.add_constant(X)
-        model = reg_models.ZeroInflatedGeneralizedPoisson(endog=y,exog= X, exog_infl=X)
-        self.fit = model.fit()
+        #y1=y[y>0]
+        self.model_ = reg_models.ZeroInflatedGeneralizedPoisson(endog=y,exog= X, exog_infl=X)
+        self.fit = self.model_.fit(method="nm")
         self.params = self.fit.params
-        self.model = model
+        self.results_=  self.fit    
         return self
     def predict(self, X):
         X = sm.add_constant(X)
-        return self.fit.predict(X)
+        return self.fit.predict(exog=X, exog_infl=X)
 
 
 

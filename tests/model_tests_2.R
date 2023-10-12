@@ -1,8 +1,5 @@
 # model tests again
 
-
-
-
 library(tidymodels)
 library(tidyverse)
 library(poissonreg)
@@ -11,7 +8,6 @@ library(finetune)
 library(magrittr)
 
 source("R/pv.R")
-
 
 pv_df <- readr::read_csv("pv/pv_live.csv", col_select = c("gsp_id", "datetime_gmt", "generation_mw")) %>%
   dplyr::mutate(date_gmt = as.Date(datetime_gmt))
