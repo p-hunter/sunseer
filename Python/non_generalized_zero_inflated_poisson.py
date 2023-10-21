@@ -89,18 +89,40 @@ def non_generalized_zero_inflated_poisson(X, y):
     #fitted = least_squares(fun=cg_poisson, x0=pars, args=(_weights, _X, _y,  _y1,  _Z, _kx, _kz, _offset_x, _offset_z),   jac=g_poisson)
     return starts #fitted
 
+
 class NonGeneralizedZeroInflatedPoisson(BaseEstimator, RegressorMixin):
     def fit(self, X, y):
-        X = sm.add_constant(X)
-        #y1=y[y>0]
-        self.model_ = reg_models.ZeroInflatedGeneralizedPoisson(endog=y,exog= X, exog_infl=X)
-        self.fit = self.model_.fit(method="nm")
-        self.params = self.fit.params
-        self.results_=  self.fit    
+        X = sm.add_constant(X)        
+        self.model_reg_ = reg_models.Poisson(endog = y[y>0], exog = X[y>0]).fit()
+        self.model_logit_ = reg_models.Logit(endog=y>0, exog=X).fit()
+        self.params_reg = self.model_reg_.params
+        self.params_logit = self.model_logit_.params             
         return self
+    
     def predict(self, X):
         X = sm.add_constant(X)
-        return self.fit.predict(exog=X, exog_infl=X)
+        return self.model_reg_.predict(X) *  self.model_logit_.predict(X)
+    
+    def predict_proba(self, X):
+        X = sm.add_constant(X)
+        return self.model_reg_.predict(X) *  self.model_logit_.predict_proba(X)
+
+class NonGeneralizedZeroInflatedLinear(BaseEstimator, RegressorMixin):
+    def fit(self, X, y):
+        X = sm.add_constant(X)        
+        self.model_reg_ = sm.GLM(endog = y[y>0], exog = X[y>0]).fit()
+        self.model_logit_ = reg_models.Logit(endog=y>0, exog=X).fit()
+        self.params_reg = self.model_reg_.params
+        self.params_logit = self.model_logit_.params             
+        return self
+    
+    def predict(self, X):
+        X = sm.add_constant(X)
+        return np.clip(self.model_reg_.predict(X) *  self.model_logit_.predict(X), 0, None)
+    
+    def predict_proba(self, X):
+        X = sm.add_constant(X)
+        return self.model_reg_.predict(X) *  self.model_logit_.predict_proba(X)   
 
 
 
